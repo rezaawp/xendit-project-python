@@ -1,0 +1,9 @@
+services:
+  xendit:
+    container_name: xendit-container-1
+    image: xendit-app       # ini harus sama dengan image hasil `docker build -t xendit-app .`
+    ports:
+      - "8000:8080"         # host:container → sesuai yang kamu minta
+    env_file:
+      - .env                # otomatis load variabel dari .env
+    restart: unless-stopped
