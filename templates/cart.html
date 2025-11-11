@@ -1,0 +1,188 @@
+$def with ()
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Keranjang Belanja</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 py-10">
+
+<div class="max-w-3xl mx-auto">
+    <div id="ubah-email" class="hidden p-4 mb-4 rounded shadow flex justify-between items-center">
+        <div>
+            <h2 class="font-semibold" id="card-id-nama"></h2>
+            <p class="text-gray-600 text-sm" id="card-id-email"></p>
+        </div>
+
+            <button
+                onclick="openCheckoutModal(true)"
+                class="bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded text-sm"
+            >
+                Ubah
+            </button>
+    </div>
+
+    <h1 class="text-2xl font-bold mb-6 text-gray-800">Keranjang Belanja</h1>
+
+    <div id="cart-list" class="space-y-4"></div>
+
+    <div class="mt-6">
+        <button onclick="openCheckoutModal()" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded">
+            Lanjutkan Checkout
+        </button>
+    </div>
+
+    <div class="mt-4">
+        <a href="/products" class="text-blue-600 underline me-4">Kembali ke Produk</a>
+        <!-- <button class="text-blue-600 underline hidden" id="ubah-email" onclick="openCheckoutModal(true)">Ubah Email</button> -->
+    </div>
+</div>
+
+<!-- Modal -->
+<div id="checkoutModal" class="fixed inset-0 bg-black bg-opacity-40 hidden flex items-center justify-center z-50">
+    <div class="bg-white p-6 rounded shadow-lg w-80">
+        <h2 class="text-lg font-bold mb-4">Data Pembeli</h2>
+
+        <label class="block text-sm">Nama</label>
+        <input id="customer-name" class="border rounded px-2 py-1 w-full">
+
+        <label class="block text-sm mt-2">Email</label>
+        <input id="customer-email" type="email" class="border rounded px-2 py-1 w-full">
+
+        <div class="mt-4 flex justify-end space-x-2">
+            <button onclick="closeCheckoutModal()" class="px-3 py-1 text-sm">Batal</button>
+            <button onclick="checkout()" id="checkout-btn-modal" class="px-4 py-1 bg-blue-600 text-white text-sm rounded">Checkout</button>
+        </div>
+    </div>
+</div>
+<script>
+
+function ubahIdentitasCard() {
+    const identitas = JSON.parse(localStorage.getItem("identitas")) || [];
+    document.getElementById("card-id-nama").textContent = identitas.name;
+    document.getElementById("card-id-email").textContent = identitas.email;
+}
+
+function loadCart() {
+    let cart = JSON.parse(localStorage.getItem("cart")) || [];
+    let container = document.getElementById("cart-list");
+
+    if (cart.length === 0) {
+        container.innerHTML = "<p class='text-gray-600'>Keranjang masih kosong.</p>";
+        return;
+    }
+
+    const identitas = JSON.parse(localStorage.getItem("identitas")) || [];
+
+    if (identitas.length != 0) {
+        document.getElementById("ubah-email").classList.remove("hidden");
+        ubahIdentitasCard();
+    }
+
+    container.innerHTML = cart.map((item, index) => `
+        <div class="p-4 bg-white shadow rounded flex justify-between items-center">
+            <div>
+                <h2 class="font-semibold">\${item.name}</h2>
+                <p class="text-gray-600">Rp \${item.price.toLocaleString()}</p>
+            </div>
+            <button onclick="removeItem(\${index})" class="text-red-600 text-sm">Hapus</button>
+        </div>
+    `).join("");
+}
+
+function removeItem(i) {
+    let cart = JSON.parse(localStorage.getItem("cart")) || [];
+    cart.splice(i, 1);
+    localStorage.setItem("cart", JSON.stringify(cart));
+    loadCart();
+}
+
+async function openCheckoutModal(changeEmail = false) {
+    const identitas = JSON.parse(localStorage.getItem("identitas")) || [];
+    
+    if (changeEmail) {
+        openModal(true);
+        return;
+    }
+
+    if (identitas.length != 0) {
+        await prosesCheckout(identitas.name, identitas.email);
+        return;
+    }
+
+    openModal();
+}
+
+function openModal(changeEmail = false) {
+    if (changeEmail) {
+        document.getElementById("checkoutModal").setAttribute("data-change-email", "true");
+        document.getElementById("checkout-btn-modal").textContent = "Simpan";        
+    } else {
+        document.getElementById("checkout-btn-modal").textContent = "Checkout";        
+    }
+
+    document.getElementById("checkoutModal").classList.remove("hidden");
+}
+
+function closeCheckoutModal() {
+    document.getElementById("checkoutModal").classList.add("hidden");
+}
+
+async function prosesCheckout(nameP, emailP, hitProcesCheckout = true) {
+    let name = nameP || document.getElementById("customer-name").value;
+    let email = emailP || document.getElementById("customer-email").value;
+
+    if (hitProcesCheckout === false) {
+        localStorage.setItem("identitas", JSON.stringify({ name, email }));
+        ubahIdentitasCard();
+        closeCheckoutModal();
+        return;
+    }
+
+    let cart = JSON.parse(localStorage.getItem("cart")) || [];
+
+    if (!name || !email) return alert("Nama & Email wajib diisi");
+    if (cart.length === 0) return alert("Keranjang kosong");
+
+    let total = cart.reduce((s, x) => s + x.price, 0);
+    let items = cart.map(i => ({ id: i.id, name: i.name, price: i.price }));
+
+    let response = await fetch("/invoice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, total, items })
+    });
+
+    let result = await response.json();
+    if (result.invoice_url) {
+        localStorage.setItem("identitas", JSON.stringify({ name, email }));
+        localStorage.removeItem("cart");
+        window.location.href = result.invoice_url; // redirect ke Xendit
+    } else {
+        alert("Gagal membuat invoice");
+    }
+}
+
+async function checkout() {
+    const hitProcesCheckout = document.getElementById("checkoutModal").getAttribute("data-change-email") == "true" ? false : true;
+    const identitas = JSON.parse(localStorage.getItem("identitas")) || [];
+
+    if (hitProcesCheckout === false) {
+        await prosesCheckout(undefined, undefined, false);
+        return;
+    }
+
+    if (identitas.length != 0) {
+        await prosesCheckout(identitas.name, identitas.email);
+    } else {
+        await prosesCheckout();
+    }
+}
+
+loadCart();
+</script>
+
+</body>
+</html>

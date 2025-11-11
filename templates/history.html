@@ -1,0 +1,202 @@
+$def with (transactions)
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>History Transaksi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 py-10">
+<div class="max-w-4xl mx-auto">
+     <h1 class="text-2xl font-bold mb-6 text-gray-800">History Transaksi</h1>
+
+    <div id="ubah-email" class="hidden p-4 mb-4 rounded shadow flex justify-between items-center">
+        <div>
+            <h2 class="font-semibold" id="card-id-nama"></h2>
+            <p class="text-gray-600 text-sm" id="card-id-email"></p>
+        </div>
+
+            <button
+                onclick="ubahIdentitas(true)"
+                class="bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded text-sm"
+            >
+                Ubah
+            </button>
+    </div>
+    
+    <a href="/" class="text-blue-600 underline">Kembali ke Produk</a>
+    $if not transactions:
+        <p class="text-gray-600">Belum ada transaksi.</p>
+    $else:
+        <div class="space-y-4 mt-4">
+            $for t in transactions:
+                <div class="bg-white p-4 rounded shadow flex justify-between items-center">
+                    <div>
+                        <h2 class="font-semibold">Invoice: ${t['invoice_id']}</h2>
+                        <p class="text-gray-600 text-sm">Email: ${t['payer_email']}</p>
+                        <p class="text-gray-600 text-sm">Deskripsi: ${t['description']}</p>
+                        <p class="text-gray-600 text-sm">Amount: Rp ${"{:,.0f}".format(t['amount'])}</p>
+                        <p class="text-gray-600 text-sm">Status: ${t['status']}</p>
+                        <p class="text-gray-500 text-xs">Created at: ${t['created_at']}</p>
+                    </div>
+
+                    $if t['status'] in ["PAID", "SETTLED"]:
+                        <button
+                            onclick="refund('${t['invoice_id']}', this)"
+                            class="bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded text-sm"
+                        >
+                            Refund
+                        </button>
+                    
+                    $if t['status'] == "REFUNDED":
+                        <button
+                            onclick="refund('${t['invoice_id']}', this)"
+                            class="bg-gray-400 text-white py-1 px-3 rounded text-sm"
+                        >
+                            Refund
+                        </button>
+                </div>
+        </div>
+
+    <div class="mt-6">
+        <a href="/" class="text-blue-600 underline">Kembali ke Produk</a>
+    </div>
+    
+<!-- MODAL -->
+    <div id="checkoutModal" class="fixed inset-0 bg-black bg-opacity-40 hidden flex items-center justify-center z-50">
+    <div class="bg-white p-6 rounded shadow-lg w-80">
+        <h2 class="text-lg font-bold mb-4">Data</h2>
+
+        <label class="block text-sm">Nama</label>
+        <input id="customer-name" class="border rounded px-2 py-1 w-full">
+
+        <label class="block text-sm mt-2">Email</label>
+        <input id="customer-email" type="email" class="border rounded px-2 py-1 w-full">
+
+        <div class="mt-4 flex justify-end space-x-2">
+            <button onclick="closeModal()" class="px-3 py-1 text-sm">Batal</button>
+            <button onclick="prosesUbah()" id="checkout-btn-modal" class="px-4 py-1 bg-blue-600 text-white text-sm rounded">Checkout</button>
+        </div>
+    </div>
+</div>
+</div>
+
+<script>
+
+function load() {
+    const identitas = JSON.parse(localStorage.getItem("identitas")) || [];
+
+    if (identitas.length != 0) {
+        document.getElementById("ubah-email").classList.remove("hidden");
+        ubahIdentitasCard();
+    }
+}
+
+function ubahIdentitasCard() {
+    const identitas = JSON.parse(localStorage.getItem("identitas")) || [];
+    document.getElementById("card-id-nama").textContent = identitas.name;
+    document.getElementById("card-id-email").textContent = identitas.email;
+}
+
+load();
+
+async function prosesUbah() {
+    const hitProcesCheckout = document.getElementById("checkoutModal").getAttribute("data-change-email") == "true" ? false : true;
+    const identitas = JSON.parse(localStorage.getItem("identitas")) || [];
+
+    if (hitProcesCheckout === false) {
+        await prosesCheckout(undefined, undefined, false);
+        const identitas = JSON.parse(localStorage.getItem("identitas")) || [];
+        const email = identitas.email;
+        window.location.href = `/history/\${email.trim()}`;
+        return;
+    }
+
+    if (identitas.length != 0) {
+        await prosesCheckout(identitas.name, identitas.email);
+    } else {
+        await prosesCheckout();
+    }
+}
+
+async function refund(invoiceId, btn) {
+    if (!confirm("Apakah Anda yakin ingin melakukan refund?")) return;
+
+    btn.disabled = true;
+    btn.textContent = "Processing...";
+
+    try {
+        const res = await fetch("/refund", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ invoice_id: invoiceId })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            alert("Refund berhasil dilakukan!");
+            btn.textContent = "Refunded";
+            btn.classList.remove("bg-red-600", "hover:bg-red-700");
+            btn.classList.add("bg-gray-400");
+        } else {
+            alert("Refund gagal: " + data.message);
+            btn.disabled = false;
+            btn.textContent = "Refund";
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Terjadi kesalahan saat refund.");
+        btn.disabled = false;
+        btn.textContent = "Refund";
+    }
+}
+
+async function prosesCheckout(nameP, emailP, hitProcesCheckout = true) {
+    let name = nameP || document.getElementById("customer-name").value;
+    let email = emailP || document.getElementById("customer-email").value;
+
+    if (hitProcesCheckout === false) {
+        localStorage.setItem("identitas", JSON.stringify({ name, email }));
+        ubahIdentitasCard();
+        closeModal();
+        return;
+    }
+}
+
+function openModal(changeEmail = false) {
+    if (changeEmail) {
+        document.getElementById("checkoutModal").setAttribute("data-change-email", "true");
+        document.getElementById("checkout-btn-modal").textContent = "Simpan";        
+    } else {
+        document.getElementById("checkout-btn-modal").textContent = "Checkout";        
+    }
+
+    document.getElementById("checkoutModal").classList.remove("hidden");
+}
+
+async function ubahIdentitas(changeEmail = false) {
+    const identitas = JSON.parse(localStorage.getItem("identitas")) || [];
+    
+    if (changeEmail) {
+        openModal(true);
+        return;
+    }
+
+    if (identitas.length != 0) {
+        await prosesCheckout(identitas.name, identitas.email);
+        return;
+    }
+
+    openModal();
+}
+
+function closeModal() {
+    document.getElementById("checkoutModal").classList.add("hidden");
+}
+
+
+</script>
+
+</body>
+</html>
