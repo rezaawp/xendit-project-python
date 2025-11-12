@@ -1,5 +1,8 @@
 - Pastikan docker sudah terinstall
 - Buat file .env (copy dari .env.example), sesuaikan isi value nya
+- Setting webhook di url https://dashboard.xendit.co/settings/developers#webhooks
+- Refund finalized: `https://${ngrok_host}/callback/refunded`
+- Invoice paid: `https://${ngrok_host}/callback/paid`
 
 ### Cara menjalankan:
 
@@ -22,3 +25,8 @@ docker ps
 ```
 
 Aplikasi sudah berjalan di `localhost:8000`
+
+4. Jika sudah, jalankan ngrok
+```bash
+ngrok http 8000
+```
